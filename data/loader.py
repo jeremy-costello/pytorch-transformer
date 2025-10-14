@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 from dataclasses import dataclass
+from typing import TypedDict
 from data.tokenizer import Tokenizer
 
 
@@ -74,6 +75,11 @@ def initialize_data(
     )
 
 
+class CustomData(TypedDict):
+    inputs: torch.Tensor
+    targets: torch.Tensor
+
+
 class CustomDataset(Dataset):
     def __init__(
             self,
@@ -83,11 +89,11 @@ class CustomDataset(Dataset):
         self.data = data
         self.context_length = context_length
     
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.data) - self.context_length
     
     # no attention/causal masking
-    def __getitem__(self, idx):
+    def __getitem__(self, idx) -> CustomData:
         inputs = self.data[
             idx
             :
@@ -130,10 +136,10 @@ if __name__ == "__main__":
         assert type(tokenizer) == Tokenizer
 
         for _ in range(100):
-            for data in train_loader:
+            for sample in train_loader:
                 pass
         
         if val_loader is not None:
             for _ in range(100):
-                for data in val_loader:
+                for sample in val_loader:
                     pass

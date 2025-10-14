@@ -3,7 +3,7 @@ class Tokenizer:
             self,
             text: str
     ) -> None:
-        self.vocab_size: str
+        self.vocab_size: int
         self.encoder: dict[str, int]
         self.decoder: dict[int, str]
         
@@ -26,4 +26,4 @@ class Tokenizer:
             self,
             tokens: list[int]
     ) -> str:
-        return [self.decoder[token] for token in tokens]
+        return "".join([self.decoder[token] for token in tokens])
