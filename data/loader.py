@@ -16,7 +16,8 @@ def initialize_data(
         context_length: int,
         batch_size: int,
         train_split: float = 1.0,
-        encoding: str = "utf-8"
+        encoding: str = "utf-8",
+        truncate_data: int | None = None
 ) -> InitializedData:
     with open(text_file, "r", encoding=encoding) as f:
         text = f.read()
@@ -29,7 +30,9 @@ def initialize_data(
         tokenizer.encode(text),
         dtype=torch.long
     )
-    data = data[:100]
+
+    if truncate_data is not None:
+        data = data[:truncate_data]
 
     assert train_split > 0.0 and train_split <= 1.0
 
@@ -114,7 +117,8 @@ if __name__ == "__main__":
             text_file=text_file,
             context_length=context_length,
             batch_size=batch_size,
-            train_split=train_split
+            train_split=train_split,
+            truncate_data=100
         )
 
         train_loader = initialized_data.train_loader
