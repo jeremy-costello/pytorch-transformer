@@ -1,7 +1,10 @@
 import torch
+from torch import nn
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from models.bigram import BigramLanguageModel
 from data.loader import initialize_data
+from data.tokenizer import Tokenizer
 from training.eval import estimate_loss
 
 
@@ -10,34 +13,18 @@ class TrainingBreak(Exception):
 
 
 def train_model(
-        text_file: str,
-        context_length: int,
-        batch_size: int,
-        train_split: float,
         learning_rate: float,
         max_epochs: int,
         max_steps: int,
         eval_interval: int,
-        eval_steps: int
-        
+        eval_steps: int,
+        model: nn.Module,
+        train_loader: DataLoader,
+        val_loader: DataLoader | None = None
 ) -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(device)
 
-    initialized_data = initialize_data(
-        text_file=text_file,
-        context_length=context_length,
-        batch_size=batch_size,
-        train_split=train_split
-    )
-
-    train_loader = initialized_data.train_loader
-    val_loader = initialized_data.val_loader
-    tokenizer = initialized_data.tokenizer
-
-    model = BigramLanguageModel(
-        vocab_size=tokenizer.vocab_size
-    )
     model = model.to(device)
 
     optimizer = torch.optim.AdamW(
@@ -88,14 +75,28 @@ if __name__ == "__main__":
     eval_interval = 200
     eval_steps = 100
 
-    train_model(
+    initialized_data = initialize_data(
         text_file=text_file,
         context_length=context_length,
         batch_size=batch_size,
-        train_split=train_split,
+        train_split=train_split
+    )
+
+    train_loader = initialized_data.train_loader
+    val_loader = initialized_data.val_loader
+    tokenizer = initialized_data.tokenizer
+
+    model = BigramLanguageModel(
+        vocab_size=tokenizer.vocab_size
+    )
+
+    train_model(
         learning_rate=learning_rate,
         max_epochs=max_epochs,
         max_steps=max_steps,
         eval_interval=eval_interval,
-        eval_steps=eval_steps
+        eval_steps=eval_steps,
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader
     )
