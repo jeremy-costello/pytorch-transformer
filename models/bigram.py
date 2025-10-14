@@ -81,13 +81,13 @@ if __name__ == "__main__":
 
     loader = initialized_data.train_loader
     tokenizer = initialized_data.tokenizer
-
-    for sample in loader:
-        break
         
     model = BigramLanguageModel(
         vocab_size=tokenizer.vocab_size
     )
+
+    for sample in loader:
+        break
     
     # this is mapped to model.forward
     output = model(sample["inputs"], sample["targets"])
