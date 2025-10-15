@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from dataclasses import dataclass
 from einops import rearrange
+from models.attention.self_attention import SelfAttentionHead
 
 
 @dataclass
@@ -16,7 +17,8 @@ class TransformerLanguageModel(nn.Module):
             self,
             vocab_size: int,
             n_embd: int,
-            context_length: int
+            context_length: int,
+            head_size: int
     ):
         super().__init__()
         # each token directly reads off the logits for the next token from a lookup table
@@ -27,6 +29,11 @@ class TransformerLanguageModel(nn.Module):
         self.position_embedding_table = nn.Embedding(
             context_length,
             n_embd
+        )
+        self.sa_head = SelfAttentionHead(
+            head_size=head_size,
+            n_embd=n_embd,
+            context_length=context_length
         )
         self.lm_head = nn.Linear(
             n_embd,
@@ -43,8 +50,9 @@ class TransformerLanguageModel(nn.Module):
         # inputs and targets are both (B,T) tensors of integers
         tok_emb = self.token_embedding_table(inputs)  # (B,T,C)
         pos_emb = self.position_embedding_table(torch.arange(T, device=inputs.device))  # (T,C)
-        summed_emb = tok_emb + pos_emb  # (B,T,C)
-        logits = self.lm_head(summed_emb)  # (B,T,vocab_size)
+        x = tok_emb + pos_emb  # (B,T,C)
+        x = self.sa_head(x)
+        logits = self.lm_head(x)  # (B,T,vocab_size)
 
         if targets is None:
             loss = None
@@ -61,12 +69,14 @@ class TransformerLanguageModel(nn.Module):
     def generate(
             self,
             inputs: torch.Tensor,
+            context_length: int,
             max_new_tokens: int
     ) -> torch.Tensor:
         # inputs is (B,T) array of indices in the current context
         for _ in range(max_new_tokens):
+            inputs_cond = inputs[:, -context_length:]
             # get the predictions
-            outputs = self(inputs)
+            outputs = self(inputs_cond)
             # focus only on the last time step
             logits = outputs.logits[:, -1, :]  # becomes (B,C)
             # apply softmax to get probabilities
@@ -86,6 +96,7 @@ if __name__ == "__main__":
     context_length = 8
     batch_size = 4
     n_embd = 32
+    head_size = 32
 
     initialized_data = initialize_data(
         text_file=text_file,
@@ -100,7 +111,8 @@ if __name__ == "__main__":
     model = TransformerLanguageModel(
         vocab_size=tokenizer.vocab_size,
         n_embd=n_embd,
-        context_length=context_length
+        context_length=context_length,
+        head_size=head_size
     )
 
     for sample in loader:
@@ -111,12 +123,13 @@ if __name__ == "__main__":
     print(output.logits.shape)
     print(output.loss)
 
-    # initial_token = torch.zeros((1, 1), dtype=torch.long)
-    # generation = model.generate(
-    #     inputs=initial_token,
-    #     max_new_tokens=100
-    # )
-    # generated_token_list = generation[0].tolist()
+    initial_token = torch.zeros((1, 1), dtype=torch.long)
+    generation = model.generate(
+        inputs=initial_token,
+        context_length=context_length,
+        max_new_tokens=100
+    )
+    generated_token_list = generation[0].tolist()
 
-    # generated_text = tokenizer.decode(generated_token_list)
-    # print(generated_text)
+    generated_text = tokenizer.decode(generated_token_list)
+    print(generated_text)
