@@ -2,9 +2,6 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from models.bigram import BigramLanguageModel
-from data.loader import initialize_data
-from data.tokenizer import Tokenizer
 from training.eval import estimate_loss
 
 
@@ -65,15 +62,23 @@ def train_model(
 
 
 if __name__ == "__main__":
+    from data.loader import initialize_data
+    from models.transformer import TransformerLanguageModel
+
+    # hyperparameters
     text_file = "./data/input.txt"
-    context_length = 8
-    batch_size = 32
+    context_length = 256
+    batch_size = 64
     train_split = 0.8
-    learning_rate = 1e-3
+    n_embd = 384
+    n_head = 6
+    n_layer = 6
+    dropout = 0.2
+    learning_rate = 3e-4
     max_epochs = 2
-    max_steps = 2000
-    eval_interval = 200
-    eval_steps = 100
+    max_steps = 5000
+    eval_interval = 500
+    eval_steps = 200
 
     initialized_data = initialize_data(
         text_file=text_file,
@@ -85,9 +90,14 @@ if __name__ == "__main__":
     train_loader = initialized_data.train_loader
     val_loader = initialized_data.val_loader
     tokenizer = initialized_data.tokenizer
-
-    model = BigramLanguageModel(
-        vocab_size=tokenizer.vocab_size
+        
+    model = TransformerLanguageModel(
+        vocab_size=tokenizer.vocab_size,
+        n_embd=n_embd,
+        context_length=context_length,
+        n_head=n_head,
+        n_layer=n_layer,
+        dropout=dropout
     )
 
     train_model(
@@ -100,3 +110,17 @@ if __name__ == "__main__":
         train_loader=train_loader,
         val_loader=val_loader
     )
+
+    model.eval()
+    with torch.no_grad():
+        for _ in range(100):
+            initial_token = torch.zeros((1, 1), dtype=torch.long)
+            generation = model.generate(
+                inputs=initial_token,
+                context_length=context_length,
+                max_new_tokens=100
+            )
+            generated_token_list = generation[0].tolist()
+
+            generated_text = tokenizer.decode(generated_token_list)
+            print(generated_text)

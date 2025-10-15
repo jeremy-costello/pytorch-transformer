@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from dataclasses import dataclass
 from einops import rearrange
-from models.attention.self_attention import SelfAttentionHead
+from models.modules import TransformerBlock
 
 
 @dataclass
@@ -18,7 +18,9 @@ class TransformerLanguageModel(nn.Module):
             vocab_size: int,
             n_embd: int,
             context_length: int,
-            head_size: int
+            n_head: int,
+            n_layer: int,
+            dropout: float
     ):
         super().__init__()
         # each token directly reads off the logits for the next token from a lookup table
@@ -30,11 +32,18 @@ class TransformerLanguageModel(nn.Module):
             context_length,
             n_embd
         )
-        self.sa_head = SelfAttentionHead(
-            head_size=head_size,
-            n_embd=n_embd,
-            context_length=context_length
+        self.blocks = nn.Sequential(
+            *[
+                TransformerBlock(
+                    n_head=n_head,
+                    n_embd=n_embd,
+                    context_length=context_length,
+                    dropout=dropout
+                )
+                for _ in range(n_layer)
+            ]
         )
+        self.ln_f = nn.LayerNorm(n_embd)
         self.lm_head = nn.Linear(
             n_embd,
             vocab_size
@@ -51,7 +60,8 @@ class TransformerLanguageModel(nn.Module):
         tok_emb = self.token_embedding_table(inputs)  # (B,T,C)
         pos_emb = self.position_embedding_table(torch.arange(T, device=inputs.device))  # (T,C)
         x = tok_emb + pos_emb  # (B,T,C)
-        x = self.sa_head(x)
+        x = self.blocks(x)  # (B,T,C)
+        x = self.ln_f(x)  # (B,T,C)
         logits = self.lm_head(x)  # (B,T,vocab_size)
 
         if targets is None:
@@ -96,7 +106,9 @@ if __name__ == "__main__":
     context_length = 8
     batch_size = 4
     n_embd = 32
-    head_size = 32
+    n_head = 4
+    n_layer = 3
+    dropout = 0.1
 
     initialized_data = initialize_data(
         text_file=text_file,
@@ -112,7 +124,9 @@ if __name__ == "__main__":
         vocab_size=tokenizer.vocab_size,
         n_embd=n_embd,
         context_length=context_length,
-        head_size=head_size
+        n_head=n_head,
+        n_layer=n_layer,
+        dropout=dropout
     )
 
     for sample in loader:
