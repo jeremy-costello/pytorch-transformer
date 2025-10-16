@@ -1,10 +1,9 @@
 import torch
 import torch.nn as nn
-from torch.nn import functional as F
-from models.modules import TransformerBlock
+from models.transformer import HeadlessTransformer
 
 
-class HeadlessTransformer(nn.Module):
+class TransformerBinaryClassifier(nn.Module):
     def __init__(
             self,
             vocab_size: int,
@@ -16,41 +15,27 @@ class HeadlessTransformer(nn.Module):
     ):
         super().__init__()
         # each token directly reads off the logits for the next token from a lookup table
-        self.token_embedding_table = nn.Embedding(
-            vocab_size,
-            n_embd
+        self.transformer = HeadlessTransformer(
+            vocab_size=vocab_size,
+            n_embd=n_embd,
+            context_length=context_length,
+            n_head=n_head,
+            n_layer=n_layer,
+            dropout=dropout
         )
-        self.position_embedding_table = nn.Embedding(
-            context_length,
-            n_embd
+        self.classification_head = nn.Linear(
+            n_embd,
+            1
         )
-        self.blocks = nn.Sequential(
-            *[
-                TransformerBlock(
-                    n_head=n_head,
-                    n_embd=n_embd,
-                    context_length=context_length,
-                    dropout=dropout
-                )
-                for _ in range(n_layer)
-            ]
-        )
-        self.ln_f = nn.LayerNorm(n_embd)
     
     def forward(
             self,
-            inputs: torch.Tensor
+            inputs: torch.Tensor,
     ) -> torch.Tensor:
-        B, T = inputs.shape
+        x = self.transformer(inputs)
+        logits = self.classification_head(x)  # (B,T,1)
+        return logits.squeeze(-1)
 
-        # inputs and targets are both (B,T) tensors of integers
-        tok_emb = self.token_embedding_table(inputs)  # (B,T,C)
-        pos_emb = self.position_embedding_table(torch.arange(T, device=inputs.device))  # (T,C)
-        x = tok_emb + pos_emb  # (B,T,C)
-        x = self.blocks(x)  # (B,T,C)
-        x = self.ln_f(x)  # (B,T,C)
-        return x
-        
 
 if __name__ == "__main__":
     from data.loader import initialize_data
@@ -74,7 +59,7 @@ if __name__ == "__main__":
     loader = initialized_data.train_loader
     tokenizer = initialized_data.tokenizer
         
-    model = HeadlessTransformer(
+    model = TransformerBinaryClassifier(
         vocab_size=tokenizer.vocab_size,
         n_embd=n_embd,
         context_length=context_length,
@@ -87,5 +72,5 @@ if __name__ == "__main__":
         break
     
     # this is mapped to model.forward
-    output = model(sample["inputs"])
+    output = model(sample["targets"])
     print(output.shape)

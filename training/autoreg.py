@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from training.eval import estimate_loss
+from utils.eval import estimate_loss
 
 
 class TrainingBreak(Exception):
