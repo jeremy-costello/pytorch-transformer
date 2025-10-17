@@ -20,6 +20,7 @@ def train_model(
         disc_model: nn.Module,
         gen_optim: torch.optim.Optimizer,
         disc_optim: torch.optim.Optimizer,
+        context_length: int,
         train_loader: DataLoader,
         val_loader: DataLoader | None = None,
         tokenizer: Tokenizer | None = None
@@ -42,38 +43,69 @@ def train_model(
                 inputs = sample["inputs"].to(device)
                 real_outputs = sample["targets"].to(device)
 
-                real_logits = disc_model(real_outputs)  # B,CL
-                real_labels = torch.ones_like(real_logits, device=device)
-
                 fake_generations: SingleGenerationOutput = gen_model.generate_once_for_reinforce(
                     inputs=inputs
                 )
                 fake_outputs = fake_generations.output_ids
                 print(tokenizer.decode(fake_outputs[0].tolist()))
+
+                assert inputs.shape == real_outputs.shape
+                assert inputs.shape == fake_outputs.shape
+
+                # should this stuff be time discounted?
+                # should also mask out irrelevant tokens in the discriminator loss
+                # upper triangular mask of 0s shifted one to the right?
+                # the for loop version of this is also insanely slow lol
+
+                real_last_tokens = []
+                for idx in range(context_length):
+                    new_example = torch.zeros_like(inputs, device=device)
+                    if idx < (context_length - 1):
+                        new_example[:, :idx+1] = inputs[:, :idx+1]
+                        new_example[:, idx+1] = real_outputs[:, idx]
+                    else:
+                        new_example[:, :idx] = inputs[:, 1:idx+1]
+                        new_example[:, idx] = real_outputs[:, idx]
+                    real_last_tokens.append(new_example)
                 
-                # this should be looping over every output_id and concat-ing it with the real inputs
-                # r1, f2; r1, r2, f3; etc. from 2-17 (truncated to 16)
-                # same for the real_logits
-                # would rearrange these into a new batch size of batch size * context length
-                # OR you could possibly use discounting over fake_outputs? gamma, etc.
-                fake_logits = disc_model(fake_outputs)
+                rlt = torch.cat(real_last_tokens)
+
+                fake_last_tokens = []
+                for idx in range(context_length):
+                    new_example = torch.zeros_like(inputs, device=device)
+                    if idx < (context_length - 1):
+                        new_example[:, :idx+1] = inputs[:, :idx+1]
+                        new_example[:, idx+1] = fake_outputs[:, idx]
+                    else:
+                        new_example[:, :idx] = inputs[:, 1:idx+1]
+                        new_example[:, idx] = fake_outputs[:, idx]
+                    fake_last_tokens.append(new_example)
+                
+                flt = torch.cat(fake_last_tokens)
+
+                real_logits = disc_model(rlt)  # B*CL,CL
+                real_labels = torch.ones_like(real_logits, device=device)
+
+                real_loss = F.binary_cross_entropy_with_logits(
+                    real_logits, real_labels
+                )
+
+                fake_logits = disc_model(flt)
                 fake_labels = torch.zeros_like(fake_logits, device=device)
 
                 fake_loss = F.binary_cross_entropy_with_logits(
                     fake_logits, fake_labels
                 )
-                real_loss = F.binary_cross_entropy_with_logits(
-                    real_logits, real_labels
-                )
-                disc_loss = 0.5 * (fake_loss + real_loss)
+                
+                disc_loss = 0.5 * (real_loss + fake_loss)
                 disc_optim.zero_grad()
                 disc_loss.backward()
                 disc_optim.step()
 
                 fake_preds = F.sigmoid(fake_logits)
-                reward = 2.0 * fake_preds - 1.0
+                reward = torch.mean(2.0 * fake_preds - 1.0)
 
-                log_loss = -1.0 * torch.mean(reward.detach() * fake_generations.log_probs)
+                log_loss = -1.0 * reward.detach() * torch.mean(fake_generations.log_probs)
                 entropy_loss = -0.01 * torch.mean(fake_generations.entropies)
                 gen_loss = log_loss + entropy_loss
                 gen_optim.zero_grad()
@@ -185,6 +217,7 @@ if __name__ == "__main__":
         disc_model=disc_model,
         gen_optim=gen_optim,
         disc_optim=disc_optim,
+        context_length=context_length,
         train_loader=train_loader,
         val_loader=val_loader,
         tokenizer=tokenizer
