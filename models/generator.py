@@ -91,7 +91,7 @@ class TransformerLanguageModel(nn.Module):
             inputs: torch.Tensor
     ) -> SingleGenerationOutput:
         outputs = self(inputs)
-        logits = outputs.logits[:, -1, :]
+        logits = outputs.logits
         
         dist = Categorical(logits=logits)
         

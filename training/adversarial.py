@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 from torch.nn import functional as F
 from tqdm import tqdm
 from data.loader import Tokenizer
+from models.generator import SingleGenerationOutput
 
 
 class TrainingBreak(Exception):
@@ -44,17 +45,17 @@ def train_model(
                 real_logits = disc_model(real_outputs)  # B,CL
                 real_labels = torch.ones_like(real_logits, device=device)
 
-                fake_generations = gen_model.generate_once_for_reinforce(
+                fake_generations: SingleGenerationOutput = gen_model.generate_once_for_reinforce(
                     inputs=inputs
                 )
-                fake_outputs = torch.cat(
-                    (
-                        inputs[:, 1:],
-                        fake_generations.output_ids[:, None]
-                    ),
-                    dim=-1
-                )
+                fake_outputs = fake_generations.output_ids
+                print(tokenizer.decode(fake_outputs[0].tolist()))
                 
+                # this should be looping over every output_id and concat-ing it with the real inputs
+                # r1, f2; r1, r2, f3; etc. from 2-17 (truncated to 16)
+                # same for the real_logits
+                # would rearrange these into a new batch size of batch size * context length
+                # OR you could possibly use discounting over fake_outputs? gamma, etc.
                 fake_logits = disc_model(fake_outputs)
                 fake_labels = torch.zeros_like(fake_logits, device=device)
 
@@ -70,7 +71,7 @@ def train_model(
                 disc_optim.step()
 
                 fake_preds = F.sigmoid(fake_logits)
-                reward = torch.mean(2.0 * fake_preds - 1.0, dim=1)
+                reward = 2.0 * fake_preds - 1.0
 
                 log_loss = -1.0 * torch.mean(reward.detach() * fake_generations.log_probs)
                 entropy_loss = -0.01 * torch.mean(fake_generations.entropies)
@@ -139,7 +140,7 @@ if __name__ == "__main__":
     )
 
     # gen optim
-    gen_lr = 1e-3
+    gen_lr = 1e-4
 
     gen_optim = torch.optim.AdamW(
         gen_model.parameters(),
@@ -147,9 +148,9 @@ if __name__ == "__main__":
     )
 
     # disc model
-    disc_n_embd = 32
+    disc_n_embd = 64
     disc_n_head = 4
-    disc_n_layer = 3
+    disc_n_layer = 4
     disc_dropout = 0.2
 
     disc_model = TransformerBinaryClassifier(
