@@ -106,7 +106,7 @@ def train_model(
                 reward = torch.mean(2.0 * fake_preds - 1.0)
 
                 log_loss = -1.0 * reward.detach() * torch.mean(fake_generations.log_probs)
-                entropy_loss = -0.01 * torch.mean(fake_generations.entropies)
+                entropy_loss = -0.0 * torch.mean(fake_generations.entropies)
                 gen_loss = log_loss + entropy_loss
                 gen_optim.zero_grad()
                 gen_loss.backward()
